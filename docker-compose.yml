@@ -1,0 +1,65 @@
+services:
+  mirix-postgres:
+    container_name: mirix-postgres
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    ports:
+      - "${MIRIX_POSTGRES_PORT:-25432}:5432"
+    environment:
+      POSTGRES_USER: ${MIRIX_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${MIRIX_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${MIRIX_POSTGRES_DB}
+    volumes:
+      - ./0.1.2/postgres-init:/docker-entrypoint-initdb.d
+      - mirix_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${MIRIX_POSTGRES_USER} -d ${MIRIX_POSTGRES_DB}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mirix-network
+
+  mirix-servive:
+    container_name: mirix-servive
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: ${PROXY_URL}
+        HTTPS_PROXY: ${PROXY_URL}
+      network: host
+    restart: unless-stopped
+    ports:
+      - "${MIRIX_SERVER_PORT:-28000}:8000"
+    env_file: .env
+    environment:
+      - HTTP_PROXY=${PROXY_URL}
+      - HTTPS_PROXY=${PROXY_URL}
+      - POSTGRES_HOST=mirix-postgres
+      - POSTGRES_USER=${MIRIX_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${MIRIX_POSTGRES_PASSWORD}
+      - POSTGRES_DATABASE=${MIRIX_POSTGRES_DB}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TZ="Asia/Shanghai"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./0.1.2/configs:/app/configs:ro
+    depends_on:
+      mirix-postgres:
+        condition: service_healthy
+    networks:
+      - mirix-network
+
+networks:
+  mirix-network:
+    driver: bridge
+
+volumes:
+  mirix_postgres:
+    external: true
